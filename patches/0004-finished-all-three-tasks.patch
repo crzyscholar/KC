@@ -1,0 +1,183 @@
+From 8f68b76a897a7f8a9160b07315f2bce5c6f8262a Mon Sep 17 00:00:00 2001
+From: crzyscholar <kokabitsadze@gmail.com>
+Date: Sun, 28 Sep 2025 20:45:35 +0400
+Subject: [PATCH 4/4] finished all three tasks
+
+all three tasks are done. this patch extends the module
+from tasks 1 and 2. it implements kernel linked list.
+
+Signed-off-by: crzyscholar <kokabitsadze@gmail.com>
+---
+ samples/hello_world/Makefile                  |   2 +-
+ .../hello_world/{task12_full.c => task123.c}  | 119 ++++++++++++++++++
+ 2 files changed, 120 insertions(+), 1 deletion(-)
+ rename samples/hello_world/{task12_full.c => task123.c} (57%)
+
+diff --git a/samples/hello_world/Makefile b/samples/hello_world/Makefile
+index 9e25f474f08f..e14214bf2e8d 100644
+--- a/samples/hello_world/Makefile
++++ b/samples/hello_world/Makefile
+@@ -1 +1 @@
+-obj-$(CONFIG_KERNELCARE_HELLOWORLD)	+= task1.o
++obj-$(CONFIG_KERNELCARE_HELLOWORLD)	+= task123.o
+diff --git a/samples/hello_world/task12_full.c b/samples/hello_world/task123.c
+similarity index 57%
+rename from samples/hello_world/task12_full.c
+rename to samples/hello_world/task123.c
+index a06761cfd05a..30b2b915086d 100644
+--- a/samples/hello_world/task12_full.c
++++ b/samples/hello_world/task123.c
+@@ -1,8 +1,11 @@
+ // SPDX-License-Identifier: GPL-2.0
++#define DEBUG
++
+ #include <linux/module.h>
+ #include <linux/kernel.h>
+ #include <linux/jiffies.h>
+ #include <linux/debugfs.h>
++#include <linux/list.h>
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Hello Kernelcare module");
+@@ -17,6 +20,81 @@ static size_t data_size;
+ 
+ 
+ 
++struct identity {
++	char name[20];
++	int id;
++	bool hired;
++	struct list_head list;
++};
++
++static LIST_HEAD(identity_list);
++
++static int identity_create(char *name, int id)
++{
++	struct identity *new; // create the new struct identity
++
++	new = kzalloc(sizeof(*new), GFP_KERNEL);
++	if (!new) {
++		pr_err("failed to create identity\n");
++		return -ENOMEM;
++	}
++
++	strscpy(new->name, name, sizeof(new->name));
++	new->id = id;
++	new->hired = false;
++	list_add/*_tail*/(&(new->list), &identity_list);
++
++
++	return 0;
++}
++
++
++
++static struct identity *identity_find(int id)
++{
++	struct identity *tmp;
++
++	list_for_each_entry(tmp, &identity_list, list) {
++		if (tmp->id == id)
++			return tmp;
++	}
++
++	return NULL;
++}
++
++
++static void identity_destroy(int id)
++{
++	struct identity *tmp, *next;
++
++	list_for_each_entry_safe(tmp, next, &identity_list, list) {
++		if (tmp->id == id) {
++			list_del(&tmp->list);
++			kfree(tmp);
++		}
++	}
++	pr_info("[+] freeing memory of identity %d is done\n", id);
++}
++
++static int identity_hire(int id)
++{
++	struct identity *tmp;
++
++	list_for_each_entry(tmp, &identity_list, list) {
++		if (tmp->id == id) {
++			tmp->hired = true;
++			return 0;
++		}
++	}
++
++	return -ENOENT;
++}
++
++
++
++
++
++
+ /* ssize_t (*read) (struct file *, char __user *, size_t, loff_t *); */
+ static ssize_t read_data(struct file *flip, char __user *buf, size_t size, loff_t *f_pos)
+ {
+@@ -105,6 +183,41 @@ static int hello_init(void)
+                 return PTR_ERR(pFileEntryData);
+         }
+ 
++
++
++	struct identity *temp;
++
++	if (identity_create("Konstantine", 1)) {
++		pr_err("[-] could not create identity Konstantine\n");
++		return -ENOMEM;
++	}
++
++	pr_info("[+] identity Konstantine created\n");
++
++	if (identity_create("Anonymous Goose", 2)) {
++		pr_err("[-] could not create identity Anonymous Goose\n");
++		return -ENOMEM;
++	}
++
++	pr_info("[+] identity Anonymous Goose created\n");
++
++	temp = identity_find(1);
++	pr_info("id 1 = %s\n", temp->name);
++
++	if (identity_hire(1))
++		return -ENOENT;
++
++	pr_info("[+] Konstantine is hired\n");
++
++	temp = identity_find(10);
++	if (temp == NULL)
++		pr_debug("id 10 not found\n");
++
++	identity_destroy(2);
++	identity_destroy(1);
++
++
++
+         pr_debug("Hello, Kernelcare!\n");
+         return 0;
+ }
+@@ -113,6 +227,14 @@ static void hello_exit(void)
+ {
+         debugfs_remove(pBaseDentry);
+         kfree(kernel_buf);
++
++	struct identity *tmp, *next;
++
++	list_for_each_entry_safe(tmp, next, &identity_list, list) {
++		list_del(&tmp->list);   // unlink first before freeing
++		kfree(tmp); // we need to unlink first so we don't just follow invalid pointers and go around freeing all kinds of memory
++	}
++
+         pr_debug("Goodbye, Kernelcare!\n");
+ }
+ 
+-- 
+2.43.0
+

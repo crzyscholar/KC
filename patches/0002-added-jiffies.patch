@@ -1,0 +1,112 @@
+From 4c1484d1e92b525ce26518fa6218f2871224fb63 Mon Sep 17 00:00:00 2001
+From: crzyscholar <kokabitsadze@gmail.com>
+Date: Sun, 28 Sep 2025 16:40:21 +0400
+Subject: [PATCH 2/4] added jiffies
+
+Extended the task 1 module with new functionality.
+now when the module is loaded it creates a debugfs file
+jiffies which can be read by any user and when read returns
+the current value of the jiffies kernel timer.
+
+Signed-off-by: crzyscholar <kokabitsadze@gmail.com>
+---
+ samples/hello_world/task1.c  | 22 --------------
+ samples/hello_world/task12.c | 57 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 57 insertions(+), 22 deletions(-)
+ delete mode 100644 samples/hello_world/task1.c
+ create mode 100644 samples/hello_world/task12.c
+
+diff --git a/samples/hello_world/task1.c b/samples/hello_world/task1.c
+deleted file mode 100644
+index fa89b422bf6d..000000000000
+--- a/samples/hello_world/task1.c
++++ /dev/null
+@@ -1,22 +0,0 @@
+-// SPDX-License-Identifier: GPL-2.0
+-#include <linux/module.h>
+-#include <linux/kernel.h>
+-
+-MODULE_LICENSE("GPL");
+-MODULE_DESCRIPTION("Hello Kernelcare module");
+-MODULE_AUTHOR("Konstantine");
+-
+-
+-static int hello_init(void)
+-{
+-	pr_debug("Hellow, Kernelcare!\n");
+-	return 0;
+-}
+-
+-static void hello_exit(void)
+-{
+-	pr_debug("Goodbye, Kernelcare!\n");
+-}
+-
+-module_init(hello_init);
+-module_exit(hello-exit);
+diff --git a/samples/hello_world/task12.c b/samples/hello_world/task12.c
+new file mode 100644
+index 000000000000..27c0b0c38085
+--- /dev/null
++++ b/samples/hello_world/task12.c
+@@ -0,0 +1,57 @@
++// SPDX-License-Identifier: GPL-2.0
++#include <linux/module.h>
++#include <linux/kernel.h>
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Hello Kernelcare module");
++MODULE_AUTHOR("Konstantine");
++
++static struct dentry *pBaseDentry;
++static struct dentry *pFileEntry;
++
++// ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
++
++static ssize_t read_jiffies(struct file *flip, char __user *buf, size_t size, loff_t *f_pos)
++{
++	//jiffies is 64 bit(long long) 2^64=18446744073709551616, which is 20 characters. null-terminator and newline is +2 characters = 22.
++	char tmp[25];
++	int written;
++
++	written = scnprintf(tmp, sizeof(tmp), "%llu\n", (unsigned long long)get_jiffies_64());
++
++	return simple_read_from_buffer(buf, size, f_pos, tmp, written);
++}
++
++
++struct file_operations jiffies_fops = {
++	.owner = THIS_MODULE,
++	.read = read_jiffies,
++};
++
++
++static int hello_init(void)
++{
++	pBaseDentry = debugfs_create_dir("kernelcare", NULL);
++	if (IS_ERR(pBaseDentry)) {
++		pr_err("kernelcare: failed to create debugfs directory\n");
++		return PTR_ERR(pBaseDentry);
++	}
++
++
++	pFileEntry = debugfs_create_file("jiffies", 0444, pBaseDentry, NULL, &jiffies_fops);
++	if (IS_ERR(pBaseDentry)) {
++		pr_err("kernelcare: failed to create jiffies file\n");
++		return PTR_ERR(pFileEntry);
++	}
++	pr_debug("Hellow, Kernelcare!\n");
++	return 0;
++}
++
++static void hello_exit(void)
++{
++	debugfs_remove(pBaseDentry);
++	pr_debug("Goodbye, Kernelcare!\n");
++}
++
++module_init(hello_init);
++module_exit(hello-exit);
+-- 
+2.43.0
+

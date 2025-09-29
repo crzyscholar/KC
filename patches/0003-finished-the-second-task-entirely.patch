@@ -1,0 +1,209 @@
+From 035fb836b165aef3179490d63999915cb70eb340 Mon Sep 17 00:00:00 2001
+From: crzyscholar <kokabitsadze@gmail.com>
+Date: Sun, 28 Sep 2025 20:19:35 +0400
+Subject: [PATCH 3/4] finished the second task entirely
+
+Finished the second task. now the module creates one more
+debugfs file called data, which can be written to only by root
+and can be read by anyone.
+
+Signed-off-by: crzyscholar <kokabitsadze@gmail.com>
+---
+ samples/hello_world/task12.c      |  57 --------------
+ samples/hello_world/task12_full.c | 120 ++++++++++++++++++++++++++++++
+ 2 files changed, 120 insertions(+), 57 deletions(-)
+ delete mode 100644 samples/hello_world/task12.c
+ create mode 100644 samples/hello_world/task12_full.c
+
+diff --git a/samples/hello_world/task12.c b/samples/hello_world/task12.c
+deleted file mode 100644
+index 27c0b0c38085..000000000000
+--- a/samples/hello_world/task12.c
++++ /dev/null
+@@ -1,57 +0,0 @@
+-// SPDX-License-Identifier: GPL-2.0
+-#include <linux/module.h>
+-#include <linux/kernel.h>
+-
+-MODULE_LICENSE("GPL");
+-MODULE_DESCRIPTION("Hello Kernelcare module");
+-MODULE_AUTHOR("Konstantine");
+-
+-static struct dentry *pBaseDentry;
+-static struct dentry *pFileEntry;
+-
+-// ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
+-
+-static ssize_t read_jiffies(struct file *flip, char __user *buf, size_t size, loff_t *f_pos)
+-{
+-	//jiffies is 64 bit(long long) 2^64=18446744073709551616, which is 20 characters. null-terminator and newline is +2 characters = 22.
+-        char tmp[25];
+-        int written;
+-
+-        written = scnprintf(tmp, sizeof(tmp), "%llu\n", (unsigned long long)get_jiffies_64());
+-
+-        return simple_read_from_buffer(buf, size, f_pos, tmp, written);
+-}
+-
+-
+-struct file_operations jiffies_fops = {
+-        .owner = THIS_MODULE,
+-        .read = read_jiffies,
+-};
+-
+-
+-static int hello_init(void)
+-{
+-	pBaseDentry = debugfs_create_dir("kernelcare", NULL);
+-        if(IS_ERR(pBaseDentry)){
+-                pr_err("kernelcare: failed to create debugfs directory\n");
+-                return PTR_ERR(pBaseDentry);
+-        }
+-
+-
+-        pFileEntry = debugfs_create_file("jiffies", 0444, pBaseDentry, NULL, &jiffies_fops);
+-        if (IS_ERR(pBaseDentry)){
+-                pr_err("kernelcare: failed to create jiffies file\n");
+-                return PTR_ERR(pFileEntry);
+-        }
+-	pr_debug("Hellow, Kernelcare!\n");
+-	return 0;
+-}
+-
+-static void hello_exit(void)
+-{
+-	debugfs_remove(pBaseDentry);
+-	pr_debug("Goodbye, Kernelcare!\n");
+-}
+-
+-module_init(hello_init);
+-module_exit(hello-exit);
+diff --git a/samples/hello_world/task12_full.c b/samples/hello_world/task12_full.c
+new file mode 100644
+index 000000000000..a06761cfd05a
+--- /dev/null
++++ b/samples/hello_world/task12_full.c
+@@ -0,0 +1,120 @@
++// SPDX-License-Identifier: GPL-2.0
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/jiffies.h>
++#include <linux/debugfs.h>
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Hello Kernelcare module");
++MODULE_AUTHOR("Konstantine");
++
++static struct dentry *pBaseDentry;
++static struct dentry *pFileEntryJiffies, *pFileEntryData;
++
++static char *kernel_buf;
++static struct rw_semaphore data_sem;
++static size_t data_size;
++
++
++
++/* ssize_t (*read) (struct file *, char __user *, size_t, loff_t *); */
++static ssize_t read_data(struct file *flip, char __user *buf, size_t size, loff_t *f_pos)
++{
++	ssize_t ret;
++
++	down_read(&data_sem);
++	ret = simple_read_from_buffer(buf, size, f_pos, kernel_buf, data_size);
++
++	up_read(&data_sem);
++	return ret;
++}
++
++
++static ssize_t write_data(struct file *flip, const char __user *buf, size_t size, loff_t *f_pos)
++{
++	ssize_t ret;
++
++	if (size > PAGE_SIZE)
++		size = PAGE_SIZE;
++
++	down_write(&data_sem);
++	ret = simple_write_to_buffer(kernel_buf, PAGE_SIZE, f_pos, buf, size);
++	if (ret >= 0)
++		data_size = min(*f_pos, (loff_t)PAGE_SIZE); //update valid data length. f_pos now points to the end of the valid data - that's why we set data_size to f_pos.
++	up_write(&data_sem);
++
++	return ret;
++}
++
++struct file_operations read_write_fops = {
++	.owner = THIS_MODULE,
++	.read = &read_data,
++	.write = &write_data,
++};
++
++
++
++// ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
++static ssize_t read_jiffies(struct file *flip, char __user *buf, size_t size, loff_t *f_pos)
++{
++	//jiffies is 64 bit(long long) 2^64=18446744073709551616, which is 20 characters. null-terminator and newline is +2 characters = 22.
++	char tmp[25];
++	int written;
++
++	written = scnprintf(tmp, sizeof(tmp), "%llu\n", (unsigned long long)get_jiffies_64());
++
++	return simple_read_from_buffer(buf, size, f_pos, tmp, written);
++}
++
++
++struct file_operations jiffies_fops = {
++	.owner = THIS_MODULE,
++	.read = read_jiffies,
++};
++
++
++static int hello_init(void)
++{
++	pBaseDentry = debugfs_create_dir("kernelcare", NULL);
++	if (IS_ERR(pBaseDentry)) {
++		pr_err("kernelcare: failed to create debugfs directory\n");
++		return PTR_ERR(pBaseDentry);
++	}
++
++
++	pFileEntryJiffies = debugfs_create_file("jiffies", 0444, pBaseDentry, NULL, &jiffies_fops);
++	if (IS_ERR(pFileEntryJiffies)) {
++		pr_err("kernelcare: failed to create jiffies file\n");
++		return PTR_ERR(pFileEntryJiffies);
++	}
++
++	kernel_buf = (char *) kzalloc(PAGE_SIZE, GFP_KERNEL);
++	if (!kernel_buf) {
++		pr_err("[-] kernelcare: failed to allocate memory for buffer\n");
++		debugfs_remove(pBaseDentry);
++		return -ENOMEM;
++	}
++	data_size = 0;
++
++	init_rwsem(&data_sem); //initialize the rw_semaphore.
++
++	/* struct dentry *debugfs_create_file(const char *name, umode_t mode, struct dentry *parent, void *data, const struct file_operations *fops); */
++	pFileEntryData = debugfs_create_file("data", 0644, pBaseDentry, NULL, &read_write_fops);
++	if (IS_ERR(pFileEntryData)) {
++		pr_err("[-] kernelcare: failed to create file\n");
++		return PTR_ERR(pFileEntryData);
++	}
++
++	pr_debug("Hello, Kernelcare!\n");
++	return 0;
++}
++
++static void hello_exit(void)
++{
++	debugfs_remove(pBaseDentry);
++	kfree(kernel_buf);
++	pr_debug("Goodbye, Kernelcare!\n");
++}
++
++module_init(hello_init);
++module_exit(hello_exit);
+-- 
+2.43.0
+

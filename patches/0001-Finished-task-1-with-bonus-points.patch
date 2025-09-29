@@ -1,0 +1,97 @@
+From f19e49ba3235d7a51a63ad9b1a46f54ad7a549e9 Mon Sep 17 00:00:00 2001
+From: crzyscholar <kokabitsadze@gmail.com>
+Date: Sun, 28 Sep 2025 15:53:54 +0400
+Subject: [PATCH 1/4] Finished task 1 with bonus points
+
+Added a module in samples/hello_world which prints a message
+to the kernel debug log level when loaded and unloaded.
+Added a new config option for it too.
+
+Signed-off-by: crzyscholar <kokabitsadze@gmail.com>
+---
+ Kconfig                      |  2 ++
+ samples/Kconfig              |  9 +++++++++
+ samples/Makefile             |  1 +
+ samples/hello_world/Makefile |  1 +
+ samples/hello_world/task1.c  | 22 ++++++++++++++++++++++
+ 5 files changed, 35 insertions(+)
+ create mode 100644 samples/hello_world/Makefile
+ create mode 100644 samples/hello_world/task1.c
+
+diff --git a/Kconfig b/Kconfig
+index 307e581144de..4bc2116cdfd2 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -32,3 +32,5 @@ source "lib/Kconfig.debug"
+ source "Documentation/Kconfig"
+ 
+ source "io_uring/Kconfig"
++
++source "samples/Kconfig"
+diff --git a/samples/Kconfig b/samples/Kconfig
+index 6e072a5f1ed8..930ab79e53e9 100644
+--- a/samples/Kconfig
++++ b/samples/Kconfig
+@@ -320,6 +320,15 @@ config SAMPLE_HUNG_TASK
+ 	  Reading these files with multiple processes triggers hung task
+ 	  detection by holding locks for a long time (256 seconds).
+ 
++config KERNELCARE_HELLOWORLD
++	tristate "Hello kernelcare module"
++	default m
++	help
++		prints a message
++		to the kernel debug log level.
++		desrcriptions needs
++		to be 4 lines.
++
+ source "samples/rust/Kconfig"
+ 
+ source "samples/damon/Kconfig"
+diff --git a/samples/Makefile b/samples/Makefile
+index 07641e177bd8..3012991e1e20 100644
+--- a/samples/Makefile
++++ b/samples/Makefile
+@@ -45,3 +45,4 @@ obj-$(CONFIG_SAMPLE_DAMON_PRCL)		+= damon/
+ obj-$(CONFIG_SAMPLE_DAMON_MTIER)	+= damon/
+ obj-$(CONFIG_SAMPLE_HUNG_TASK)		+= hung_task/
+ obj-$(CONFIG_SAMPLE_TSM_MR)		+= tsm-mr/
++obj-$(CONFIG_KERNELCARE_HELLOWORLD)	+= hello_world/
+diff --git a/samples/hello_world/Makefile b/samples/hello_world/Makefile
+new file mode 100644
+index 000000000000..9e25f474f08f
+--- /dev/null
++++ b/samples/hello_world/Makefile
+@@ -0,0 +1 @@
++obj-$(CONFIG_KERNELCARE_HELLOWORLD)	+= task1.o
+diff --git a/samples/hello_world/task1.c b/samples/hello_world/task1.c
+new file mode 100644
+index 000000000000..fa89b422bf6d
+--- /dev/null
++++ b/samples/hello_world/task1.c
+@@ -0,0 +1,22 @@
++// SPDX-License-Identifier: GPL-2.0
++#include <linux/module.h>
++#include <linux/kernel.h>
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Hello Kernelcare module");
++MODULE_AUTHOR("Konstantine");
++
++
++static int hello_init(void)
++{
++	pr_debug("Hellow, Kernelcare!\n");
++	return 0;
++}
++
++static void hello_exit(void)
++{
++	pr_debug("Goodbye, Kernelcare!\n");
++}
++
++module_init(hello_init);
++module_exit(hello-exit);
+-- 
+2.43.0
+
